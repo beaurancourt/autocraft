@@ -165,5 +165,21 @@ export function tokenView(db: DatabaseSync, id: string, configDir: string): { st
  * access token expiring within `marginMs`.
  */
 export function credentialsNearExpiry(db: DatabaseSync, id: string, configDir: string, now: number, marginMs: number): boolean {
-  return !usesToken(db, id, configDir) && tokenNearExpiry(join(configDir, ".credentials.json"), now, marginMs);
+  return !providerEnv(configDir) && !usesToken(db, id, configDir) && tokenNearExpiry(join(configDir, ".credentials.json"), now, marginMs);
+}
+
+/**
+ * The `env` of the account's settings.json when it points the CLI at another provider (it sets ANTHROPIC_BASE_URL), else null.
+ * Such an account has no login to expire, and the sandbox, which cannot see the config directory, gets these variables instead.
+ */
+export function providerEnv(configDir: string): Record<string, string> | null {
+  try {
+    const env = (JSON.parse(readFileSync(join(configDir, "settings.json"), "utf8")) as { env?: unknown }).env;
+    if (!env || typeof env !== "object") return null;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(env)) if (typeof v === "string") out[k] = v;
+    return out.ANTHROPIC_BASE_URL ? out : null;
+  } catch {
+    return null;
+  }
 }

@@ -38,6 +38,8 @@ export type SandboxSpec = {
   credentials?: string;
   /** The account's long-lived token; passed as an environment variable instead of mounting credentials. */
   oauthToken?: string;
+  /** Further environment variables of the call (an account that uses another provider); like the token, only in `env`, never in `args`. */
+  extraEnv?: Record<string, string>;
   /** Arguments for claude (src/prompts `claudeArgs`). */
   claudeArgs: string[];
   /** The workspace: further read-only checkouts, each mounted at `/repos/<name>`. Present (even empty) means `/repos` exists and `claudeArgs` names it with --add-dir. */
@@ -85,5 +87,5 @@ export function sandboxCommand(s: SandboxSpec): { cmd: string; args: string[]; e
     "--chdir", WORK_PATH,
     CLAUDE_PATH, ...s.claudeArgs,
   ];
-  return { cmd: BWRAP, args, env: { ...Object.fromEntries(env), ...(s.oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: s.oauthToken } : {}) } };
+  return { cmd: BWRAP, args, env: { ...Object.fromEntries(env), ...(s.extraEnv ?? {}), ...(s.oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: s.oauthToken } : {}) } };
 }

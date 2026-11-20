@@ -28,7 +28,7 @@ import { awaitCall, enqueueCall, type Outcome } from "../remote/calls.ts";
 import { bundleMounts, checkoutCommit, REFERENCE_SERVER } from "../remote/bundle.ts";
 import { resolveClaudeBin, sandboxCommand, TOKEN_MARGIN_MS } from "../sandbox/index.ts";
 import { childEnv } from "../agents/status.ts";
-import { cliErrorText, credentialsNearExpiry, isAuthFailure, markTokenRejected, readToken, tokenEnv, usesToken } from "../agents/token.ts";
+import { cliErrorText, credentialsNearExpiry, isAuthFailure, markTokenRejected, providerEnv, readToken, tokenEnv, usesToken } from "../agents/token.ts";
 import { REFERENCE_PATH, REPO_DOCS_PATH, type SandboxSpec } from "../sandbox/command.ts";
 import { repoDocsFor, repoOfCheckout } from "../sandbox/repo-docs.ts";
 import { holdCheckouts } from "../sandbox/checkout.ts";
@@ -522,8 +522,9 @@ async function askOnce<K extends ClaudePromptId>(id: K, model: string, input: Cl
     if (sandboxed) {
       const claudeBin = resolveClaudeBin(), credentials = join(run.configDir, ".credentials.json");
       // With a long-lived token the sandbox gets the token instead of the credentials file (read when the command is built).
-      if (!claudeBin || (!existsSync(credentials) && !withToken())) throw new Error("sandboxed call: claude binary or the account's credentials file not found");
-      spec = { claudeBin, checkout: opts.checkout!, ...(existsSync(credentials) && { credentials }), claudeArgs: args, shared, ...(workspace && { agentsFile: agentsFile(Object.keys(it?.mcpServers ?? {}).sort()) }), ...(sessions && { sessionDir: sessions }), extraMounts: tools || reference || docs ? [...(tools ? [...tools.mounts, { host: tools.file, path: MCP_PATH }] : []), ...(reference ? [{ host: reference, path: REFERENCE_PATH }] : []), ...(docs ? [{ host: docs, path: REPO_DOCS_PATH }] : [])] : undefined };
+      const extraEnv = providerEnv(run.configDir);
+      if (!claudeBin || (!existsSync(credentials) && !withToken() && !extraEnv)) throw new Error("sandboxed call: claude binary or the account's credentials file not found");
+      spec = { claudeBin, checkout: opts.checkout!, ...(existsSync(credentials) && { credentials }), ...(extraEnv && { extraEnv }), claudeArgs: args, shared, ...(workspace && { agentsFile: agentsFile(Object.keys(it?.mcpServers ?? {}).sort()) }), ...(sessions && { sessionDir: sessions }), extraMounts: tools || reference || docs ? [...(tools ? [...tools.mounts, { host: tools.file, path: MCP_PATH }] : []), ...(reference ? [{ host: reference, path: REFERENCE_PATH }] : []), ...(docs ? [{ host: docs, path: REPO_DOCS_PATH }] : [])] : undefined };
     }
 
     /** One `claude -p` process on the run `runId`: the first message, or with `resume` a follow-up on the same session. Never throws for a failed call. */
@@ -535,7 +536,7 @@ async function askOnce<K extends ClaudePromptId>(id: K, model: string, input: Cl
       let r: Proc;
       const clock: ToolClock = { start: new Map(), end: new Map() };
       // The sandbox has no credentials mount for a call without a token; with neither, the turn is not run unauthenticated.
-      if (spec && !usedToken && !spec.credentials) {
+      if (spec && !usedToken && !spec.credentials && !spec.extraEnv) {
         finish({ state: "failed", error: "no token or credentials for the account", summary: "no credentials" });
         return null;
       }
